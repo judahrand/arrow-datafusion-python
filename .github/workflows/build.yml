@@ -48,10 +48,10 @@ jobs:
       matrix:
         os: [ubuntu, macos, windows]
         target: [x86_64, aarch64]
-        manylinux: [auto]
         include:
           - os: ubuntu
             platform: linux
+            manylinux: '2014'
           - os: windows
             ls: dir
             interpreter: 3.7 3.8 3.9 3.10 3.11
@@ -65,15 +65,18 @@ jobs:
             interpreter: 3.7 3.8 3.9 3.10 3.11
           - os: ubuntu
             platform: linux
+            manylinux: '2014'
             target: i686
           # GCC 4.8.5 in manylinux2014 container doesn't support c11 atomic
           # we use manylinux_2_24 container for aarch64 and armv7 targets instead,
           - os: ubuntu
             platform: linux
+            manylinux: '2014'
             target: aarch64
             container: messense/manylinux_2_24-cross:aarch64
           - os: ubuntu
             platform: linux
+            manylinux: '2014'
             target: armv7
             container: messense/manylinux_2_24-cross:armv7
             interpreter: 3.7 3.8 3.9 3.10 3.11
@@ -110,7 +113,7 @@ jobs:
         with:
           command: sdist
           args: --out dist
-          rust-toolchain: stable
+          rust-toolchain: nightly
 
       - name: Build wheels
         uses: messense/maturin-action@v1
