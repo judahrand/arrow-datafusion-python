@@ -97,6 +97,24 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          version: '3.x'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # For some build platforms a nested container is used. We need to make
+      # `protoc` availiable inside that container.
+      - run: |
+          # https://github.com/actions/runner/issues/2058
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+          cp $(which protoc) .
+          cat >$GITHUB_WORKSPACE/entrypoint.sh <<EOL
+          #!/bin/bash
+          export PATH=$PATH:$PWD
+          "$@"
+          EOL
+          chmod +x $GITHUB_WORKSPACE/entrypoint.sh
+
       - name: Install Twine
         run: pip install -U twine
 
@@ -123,6 +141,7 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux || 'auto' }}
           container: ${{ matrix.container }}
+          docker-options: --entrypoint "${{ env.GITHUB_WORKSPACE }}/entrypoinst.sh"
           args: --release --out dist --interpreter ${{ matrix.interpreter || '3.7 3.8 3.9 3.10 3.11 pypy3.7 pypy3.8 pypy3.9' }}
 
       - name: List build output
