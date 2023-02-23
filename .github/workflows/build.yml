@@ -40,15 +40,68 @@ jobs:
           name: python-wheel-license
           path: LICENSE.txt
 
-  build-python-mac-win:
+  build:
+    name: build on ${{ matrix.platform || matrix.os }} (${{ matrix.target }} - ${{ matrix.manylinux || 'auto' }})
     needs: [generate-license]
-    name: Mac/Win
-    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10"]
-        os: [macos-latest, windows-latest]
+        os: [ubuntu, macos, windows]
+        target: [x86_64, aarch64]
+        manylinux: [auto]
+        include:
+          - os: ubuntu
+            platform: linux
+          - os: windows
+            ls: dir
+            interpreter: 3.7 3.8 3.9 3.10 3.11
+          - os: windows
+            ls: dir
+            target: i686
+            python-architecture: x86
+            interpreter: 3.7 3.8 3.9 3.10 3.11
+          - os: macos
+            target: aarch64
+            interpreter: 3.7 3.8 3.9 3.10 3.11
+          - os: ubuntu
+            platform: linux
+            target: i686
+          # GCC 4.8.5 in manylinux2014 container doesn't support c11 atomic
+          # we use manylinux_2_24 container for aarch64 and armv7 targets instead,
+          - os: ubuntu
+            platform: linux
+            target: aarch64
+            container: messense/manylinux_2_24-cross:aarch64
+          - os: ubuntu
+            platform: linux
+            target: armv7
+            container: messense/manylinux_2_24-cross:armv7
+            interpreter: 3.7 3.8 3.9 3.10 3.11
+          # musllinux
+          - os: ubuntu
+            platform: linux
+            target: x86_64
+            manylinux: musllinux_1_1
+          - os: ubuntu
+            platform: linux
+            target: aarch64
+            manylinux: musllinux_1_1
+          - os: ubuntu
+            platform: linux
+            target: ppc64le
+            container: messense/manylinux_2_24-cross:ppc64le
+            interpreter: 3.7 3.8 3.9 3.10 3.11
+          - os: ubuntu
+            platform: linux
+            target: s390x
+            container: messense/manylinux_2_24-cross:s390x
+            interpreter: 3.7 3.8 3.9 3.10 3.11
+        exclude:
+            # Windows on arm64 only supports Python 3.11+
+            - os: windows
+              target: aarch64
+
+    runs-on: ${{ matrix.os }}-latest
     steps:
       - uses: actions/checkout@v3
 
@@ -67,77 +120,37 @@ jobs:
           name: python-wheel-license
           path: .
 
-      - name: Build Python package
-        run: maturin build --release --strip
-
-      - name: List Windows wheels
-        if: matrix.os == 'windows-latest'
-        run: dir target\wheels\
-
-      - name: List Mac wheels
-        if: matrix.os != 'windows-latest'
-        run: find target/wheels/
-
-      - name: Archive wheels
-        uses: actions/upload-artifact@v3
-        with:
-          name: dist
-          path: target/wheels/*
-
-  build-manylinux:
-    needs: [generate-license]
-    name: Manylinux
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: rm LICENSE.txt
-      - name: Download LICENSE.txt
-        uses: actions/download-artifact@v3
-        with:
-          name: python-wheel-license
-          path: .
-      - run: cat LICENSE.txt
       - name: Install Protoc
         uses: arduino/setup-protoc@v1
         with:
           version: '3.x'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
+
+      - name: Build sdist
+        if: ${{ matrix.os == 'ubuntu' && matrix.target == 'x86_64' && matrix.manylinux == 'auto' }}
+        uses: messense/maturin-action@v1
         with:
-          env:
-            RUST_BACKTRACE: 1
-          rust-toolchain: nightly
-          target: x86_64
-          manylinux: auto
-          args: --release --manylinux 2014
+          command: sdist
+          args: --out dist
+          rust-toolchain: stable
+
+      - name: Build wheels
+        uses: messense/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux || 'auto' }}
+          container: ${{ matrix.container }}
+          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.7 3.8 3.9 3.10 3.11 pypy3.7 pypy3.8 pypy3.9' }}
+          rust-toolchain: stable
+
+      - name: List build output
+        run: ${{ matrix.ls || 'ls -lh' }} dist/
+
+      - name: Check build output
+        run: twine check --strict dist/*
+
       - name: Archive wheels
         uses: actions/upload-artifact@v3
-        with:
-          name: dist
-          path: target/wheels/*
-
-  build-sdist:
-    needs: [generate-license]
-    name: Source distribution
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - run: rm LICENSE.txt
-      - name: Download LICENSE.txt
-        uses: actions/download-artifact@v2
-        with:
-          name: python-wheel-license
-          path: .
-      - run: cat LICENSE.txt
-      - name: Build sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          rust-toolchain: stable
-          manylinux: auto
-          args: --release --sdist --out dist
-      - name: Archive wheels
-        uses: actions/upload-artifact@v2
         with:
           name: dist
           path: target/wheels/*
